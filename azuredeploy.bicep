@@ -26,7 +26,7 @@ param keyVaultSecretsOfficerObjectId string
 param logAnalyticsWorkspaceId string = ''
 
 resource resourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' = {
-  name: '${workloadName}-${location}'
+  name: workloadName
   location: location
 }
 
@@ -52,5 +52,14 @@ module workflow 'workflow.bicep' = {
     appRegistrationClientId: appRegistrationClientId
     keyVaultName: keyVault.outputs.keyVaultName
     logAnalyticsWorkspaceId: logAnalyticsWorkspaceId
+  }
+}
+
+module monitor 'monitor.bicep' = {
+  name: '${workloadName}-monitor-deployment'
+  scope: resourceGroup
+  params: {
+    workloadName: workloadName
+    workflowId: workflow.outputs.workflowId
   }
 }

@@ -35,12 +35,14 @@ Create a new custom access level. Under *What this Access Level Can Do* leave al
 
 ## Field Mappings
 
-| BambooHR    | Entra ID            |
-|-------------|---------------------|
-| department  | department          |
-| division    | companyName         |
-| jobTitle    | jobTitle            |
-| location    | country             |
-| location    | extensionAttribute1 |
-| mobilePhone | mobilePhone         |
-| workPhone   | businessPhones      |
+| BambooHR         | Entra ID            |
+|------------------|---------------------|
+| department       | department          |
+| division         | companyName         |
+| employmentStatus | employeeType        |
+| hireDate         | employeeHireDate    |
+| jobTitle         | jobTitle            |
+| location         | country             |
+| location         | extensionAttribute1 |
+| mobilePhone      | mobilePhone         |
+| workPhone        | businessPhones      |

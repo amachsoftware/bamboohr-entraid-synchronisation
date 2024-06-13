@@ -50,10 +50,7 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
             interval: 1
             schedule: {
               hours: [
-                '2'
-                '8'
-                '14'
-                '20'
+                '4'
               ]
             }
           }
@@ -62,10 +59,7 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
             interval: 1
             schedule: {
               hours: [
-                '2'
-                '8'
-                '14'
-                '20'
+                '4'
               ]
             }
           }
@@ -74,35 +68,31 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       actions: {
         Apply_to_each_active_BambooHR_employee: {
-          foreach: '@body(\'Filter_for_active_BambooHR_employees\')'
           actions: {
             Check_whether_workPhone_provided_by_BambooHR: {
               actions: {
                 Check_whether_workPhoneExtension_provided_by_BambooHR: {
                   actions: {
-                    Set_businessPhones_with_extension: {
-                      runAfter: {}
-                      type: 'SetVariable'
+                    Set_BusinessPhones_with_extension: {
                       inputs: {
                         name: 'BusinessPhones'
                         value: [
                           '@{items(\'Apply_to_each_active_BambooHR_employee\')?[\'workPhone\']} Ext. @{items(\'Apply_to_each_active_BambooHR_employee\')?[\'workPhoneExtension\']}'
                         ]
                       }
+                      type: 'SetVariable'
                     }
                   }
-                  runAfter: {}
                   else: {
                     actions: {
-                      Set_businessPhones_without_extension: {
-                        runAfter: {}
-                        type: 'SetVariable'
+                      Set_BusinessPhones_without_extension: {
                         inputs: {
                           name: 'BusinessPhones'
                           value: [
                             '@items(\'Apply_to_each_active_BambooHR_employee\')?[\'workPhone\']'
                           ]
                         }
+                        type: 'SetVariable'
                       }
                     }
                   }
@@ -121,16 +111,14 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   type: 'If'
                 }
               }
-              runAfter: {}
               else: {
                 actions: {
-                  Set_empty_businessPhones: {
-                    runAfter: {}
-                    type: 'SetVariable'
+                  Set_empty_BusinessPhones: {
                     inputs: {
                       name: 'BusinessPhones'
                       value: []
                     }
+                    type: 'SetVariable'
                   }
                 }
               }
@@ -146,26 +134,28 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   }
                 ]
               }
+              runAfter: {
+                Switch: [
+                  'Succeeded'
+                ]
+              }
               type: 'If'
             }
             Find_direct_reports: {
+              inputs: {
+                from: '@body(\'Filter_for_active_BambooHR_employees\')'
+                where: '@equals(item()?[\'supervisor\'], items(\'Apply_to_each_active_BambooHR_employee\')?[\'displayName\'])'
+              }
               runAfter: {
                 Set_Entra_ID_user_properties: [
                   'Succeeded'
                 ]
               }
               type: 'Query'
-              inputs: {
-                from: '@body(\'Filter_for_active_BambooHR_employees\')'
-                where: '@equals(item()?[\'supervisor\'], items(\'Apply_to_each_active_BambooHR_employee\')?[\'displayName\'])'
-              }
             }
             For_each: {
-              foreach: '@body(\'Parse_direct_reports\')'
               actions: {
                 Set_manager: {
-                  runAfter: {}
-                  type: 'Http'
                   inputs: {
                     authentication: {
                       audience: 'https://graph.microsoft.com/'
@@ -183,8 +173,10 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                     method: 'PUT'
                     uri: 'https://graph.microsoft.com/v1.0/users/@{items(\'For_each\')[\'workEmail\']}/manager/$ref'
                   }
+                  type: 'Http'
                 }
               }
+              foreach: '@body(\'Parse_direct_reports\')'
               runAfter: {
                 Parse_direct_reports: [
                   'Succeeded'
@@ -193,12 +185,6 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
               type: 'Foreach'
             }
             Get_Entra_ID_user: {
-              runAfter: {
-                Check_whether_workPhone_provided_by_BambooHR: [
-                  'Succeeded'
-                ]
-              }
-              type: 'Http'
               inputs: {
                 authentication: {
                   audience: 'https://graph.microsoft.com/'
@@ -213,14 +199,14 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                 method: 'GET'
                 uri: 'https://graph.microsoft.com/v1.0/users/@{items(\'Apply_to_each_active_BambooHR_employee\')?[\'workEmail\']}'
               }
-            }
-            Parse_Entra_ID_user: {
               runAfter: {
-                Get_Entra_ID_user: [
+                Check_whether_workPhone_provided_by_BambooHR: [
                   'Succeeded'
                 ]
               }
-              type: 'ParseJson'
+              type: 'Http'
+            }
+            Parse_Entra_ID_user: {
               inputs: {
                 content: '@body(\'Get_Entra_ID_user\')'
                 schema: {
@@ -293,14 +279,14 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   type: 'object'
                 }
               }
-            }
-            Parse_direct_reports: {
               runAfter: {
-                Find_direct_reports: [
+                Get_Entra_ID_user: [
                   'Succeeded'
                 ]
               }
               type: 'ParseJson'
+            }
+            Parse_direct_reports: {
               inputs: {
                 content: '@body(\'Find_direct_reports\')'
                 schema: {
@@ -477,14 +463,62 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   type: 'array'
                 }
               }
-            }
-            Set_Entra_ID_user_properties: {
               runAfter: {
-                Parse_Entra_ID_user: [
+                Find_direct_reports: [
                   'Succeeded'
                 ]
               }
+              type: 'ParseJson'
+            }
+            Retrieve_additional_employee_details_from_BambooHR: {
+              inputs: {
+                authentication: {
+                  password: '@{body(\'Get_BambooHR_API_key_secret\')?[\'value\']}'
+                  type: 'Basic'
+                  username: '@{body(\'Get_BambooHR_API_key_secret\')?[\'value\']}'
+                }
+                headers: {
+                  Accept: 'application/json'
+                }
+                method: 'GET'
+                queries: {
+                  fields: 'hireDate'
+                }
+                uri: 'https://api.bamboohr.com/api/gateway.php/amach/v1/employees/@{items(\'Apply_to_each_active_BambooHR_employee\')?[\'id\']}'
+              }
+              runtimeConfiguration: {
+                contentTransfer: {
+                  transferMode: 'Chunked'
+                }
+              }
               type: 'Http'
+            }
+            Retrieve_employment_status_from_BambooHR: {
+              inputs: {
+                authentication: {
+                  password: '@{body(\'Get_BambooHR_API_key_secret\')?[\'value\']}'
+                  type: 'Basic'
+                  username: '@{body(\'Get_BambooHR_API_key_secret\')?[\'value\']}'
+                }
+                headers: {
+                  Accept: 'application/json'
+                }
+                method: 'GET'
+                uri: 'https://api.bamboohr.com/api/gateway.php/amach/v1/employees/@{items(\'Apply_to_each_active_BambooHR_employee\')?[\'id\']}/tables/employmentStatus'
+              }
+              runAfter: {
+                Retrieve_additional_employee_details_from_BambooHR: [
+                  'Succeeded'
+                ]
+              }
+              runtimeConfiguration: {
+                contentTransfer: {
+                  transferMode: 'Chunked'
+                }
+              }
+              type: 'Http'
+            }
+            Set_Entra_ID_user_properties: {
               inputs: {
                 authentication: {
                   audience: 'https://graph.microsoft.com/'
@@ -498,10 +532,13 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                   companyName: '@if(empty(items(\'Apply_to_each_active_BambooHR_employee\')?[\'division\']), null, items(\'Apply_to_each_active_BambooHR_employee\')?[\'division\'])'
                   country: '@if(empty(items(\'Apply_to_each_active_BambooHR_employee\')?[\'location\']), null, items(\'Apply_to_each_active_BambooHR_employee\')?[\'location\'])'
                   department: '@if(empty(items(\'Apply_to_each_active_BambooHR_employee\')?[\'department\']), null, items(\'Apply_to_each_active_BambooHR_employee\')?[\'department\'])'
+                  employeeHireDate: '@formatDateTime(body(\'Retrieve_additional_employee_details_from_BambooHR\')[\'hireDate\'], \'yyyy-MM-ddTHH:mmZ\')'
+                  employeeType: '@variables(\'EmploymentStatus\')'
                   jobTitle: '@if(empty(items(\'Apply_to_each_active_BambooHR_employee\')?[\'jobTitle\']), null, items(\'Apply_to_each_active_BambooHR_employee\')?[\'jobTitle\'])'
                   mobilePhone: '@if(empty(items(\'Apply_to_each_active_BambooHR_employee\')?[\'mobilePhone\']), null, items(\'Apply_to_each_active_BambooHR_employee\')?[\'mobilePhone\'])'
                   onPremisesExtensionAttributes: {
                     extensionAttribute1: '@if(empty(items(\'Apply_to_each_active_BambooHR_employee\')?[\'location\']), null, items(\'Apply_to_each_active_BambooHR_employee\')?[\'location\'])'
+                    extensionAttribute2: '@variables(\'EmploymentStatus\')'
                   }
                 }
                 headers: {
@@ -510,62 +547,206 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
                 method: 'PATCH'
                 uri: 'https://graph.microsoft.com/v1.0/users/@{items(\'Apply_to_each_active_BambooHR_employee\')?[\'workEmail\']}'
               }
+              runAfter: {
+                Parse_Entra_ID_user: [
+                  'Succeeded'
+                ]
+              }
+              type: 'Http'
+            }
+            Switch: {
+              cases: {
+                'Contractor_-_C': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Contractor_for_Contractor_-_C': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Contractor - C'
+                }
+                'Contractor_-_Individual_Entrepreneur': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Contractor_for_Contractor_-_Individual_Entrepreneur': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Contractor - Individual Entrepreneur'
+                }
+                'Contractor_-_Limited_Company': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Contractor_for_Contractor_-_Limited_Company': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Contractor - Limited Company'
+                }
+                'Contractor_-_PFA': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Contractor_for_Contractor_-_PFA': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Contractor - PFA'
+                }
+                'Contractor_-_Sole_Trader': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Contractor_for_Contractor_-_Sole_Trader': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Contractor - Sole Trader'
+                }
+                FTC: {
+                  actions: {
+                    Set_EmploymentStatus_to_Contractor_for_FTC: {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'FTC'
+                }
+                'Limited_Partnership_(LP)': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Contractor_for_Limited_Partnership_(LP)': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Limited Partnership (LP)'
+                }
+                Maternity_Leave: {
+                  actions: {
+                    Set_EmploymentStatus_to_Employee_for_Maternity_Leave: {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Employee'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Maternity Leave'
+                }
+                'Part-Time': {
+                  actions: {
+                    'Set_EmploymentStatus_to_Employee_for_Part-Time': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Employee'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Part-Time'
+                }
+                Partner: {
+                  actions: {
+                    Set_EmploymentStatus_to_Contractor_for_Partner: {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Partner'
+                }
+                'Partner_-_C': {
+                  actions: {
+                    'Set_employment_status_to_Contractor_for_Partner_-_C': {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Contractor'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Partner - C'
+                }
+                Permanent: {
+                  actions: {
+                    Set_EmploymentStatus_to_Employee_for_Permanent: {
+                      inputs: {
+                        name: 'EmploymentStatus'
+                        value: 'Employee'
+                      }
+                      type: 'SetVariable'
+                    }
+                  }
+                  case: 'Permanent'
+                }
+              }
+              default: {
+                actions: {
+                  Set_EmploymentStatus_to_unknown: {
+                    inputs: {
+                      name: 'EmploymentStatus'
+                      value: 'Unknown'
+                    }
+                    type: 'SetVariable'
+                  }
+                }
+              }
+              expression: '@{body(\'Retrieve_employment_status_from_BambooHR\')[0][\'employmentStatus\']}'
+              runAfter: {
+                Retrieve_employment_status_from_BambooHR: [
+                  'Succeeded'
+                ]
+              }
+              type: 'Switch'
             }
           }
+          foreach: '@body(\'Filter_for_active_BambooHR_employees\')'
           runAfter: {
-            Initialize_businessPhone_array_variable: [
+            Initialise_EmploymentStatus_variable: [
               'Succeeded'
             ]
           }
-          type: 'Foreach'
           runtimeConfiguration: {
             concurrency: {
               repetitions: 1
             }
           }
+          type: 'Foreach'
         }
         Filter_for_active_BambooHR_employees: {
+          inputs: {
+            from: '@body(\'Parse_BambooHR_directory_response\')?[\'employees\']'
+            where: '@not(equals(item()?[\'workEmail\'], null))'
+          }
           runAfter: {
-            Parse_BambooHR_API_response: [
+            Parse_BambooHR_directory_response: [
               'Succeeded'
             ]
           }
           type: 'Query'
-          inputs: {
-            from: '@body(\'Parse_BambooHR_API_response\')?[\'employees\']'
-            where: '@not(equals(item()?[\'workEmail\'], null))'
-          }
-        }
-        Get_Entra_ID_app_registration_secret: {
-          runAfter: {}
-          runtimeConfiguration: {
-            secureData: {
-              properties: [
-                'outputs'
-              ]
-            }
-          }
-          type: 'ApiConnection'
-          inputs: {
-            host: {
-              connection: {
-                name: '@parameters(\'$connections\')[\'keyvault\'][\'connectionId\']'
-              }
-            }
-            method: 'get'
-            path: '/secrets/@{encodeURIComponent(\'${workloadName}-appregistration-secret\')}/value'
-          }
         }
         Get_BambooHR_API_key_secret: {
-          runAfter: {}
-          runtimeConfiguration: {
-            secureData: {
-              properties: [
-                'outputs'
-              ]
-            }
-          }
-          type: 'ApiConnection'
           inputs: {
             host: {
               connection: {
@@ -575,14 +756,37 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
             method: 'get'
             path: '/secrets/@{encodeURIComponent(\'${workloadName}-bamboohrapikey-secret\')}/value'
           }
-        }
-        Initialize_businessPhone_array_variable: {
-          runAfter: {
-            Filter_for_active_BambooHR_employees: [
-              'Succeeded'
-            ]
+          runAfter: {}
+          runtimeConfiguration: {
+            secureData: {
+              properties: [
+                'outputs'
+              ]
+            }
           }
-          type: 'InitializeVariable'
+          type: 'ApiConnection'
+        }
+        Get_Entra_ID_app_registration_secret: {
+          inputs: {
+            host: {
+              connection: {
+                name: '@parameters(\'$connections\')[\'keyvault\'][\'connectionId\']'
+              }
+            }
+            method: 'get'
+            path: '/secrets/@{encodeURIComponent(\'${workloadName}-appregistration-secret\')}/value'
+          }
+          runAfter: {}
+          runtimeConfiguration: {
+            secureData: {
+              properties: [
+                'outputs'
+              ]
+            }
+          }
+          type: 'ApiConnection'
+        }
+        Initialise_BusinessPhones_variable: {
           inputs: {
             variables: [
               {
@@ -591,14 +795,30 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
               }
             ]
           }
-        }
-        Parse_BambooHR_API_response: {
           runAfter: {
-            Retrieve_company_directory_from_BambooHR: [
+            Filter_for_active_BambooHR_employees: [
               'Succeeded'
             ]
           }
-          type: 'ParseJson'
+          type: 'InitializeVariable'
+        }
+        Initialise_EmploymentStatus_variable: {
+          inputs: {
+            variables: [
+              {
+                name: 'EmploymentStatus'
+                type: 'string'
+              }
+            ]
+          }
+          runAfter: {
+            Initialise_BusinessPhones_variable: [
+              'Succeeded'
+            ]
+          }
+          type: 'InitializeVariable'
+        }
+        Parse_BambooHR_directory_response: {
           inputs: {
             content: '@body(\'Retrieve_company_directory_from_BambooHR\')'
             schema: {
@@ -802,17 +1022,14 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
               type: 'object'
             }
           }
-        }
-        Retrieve_company_directory_from_BambooHR: {
           runAfter: {
-            Get_Entra_ID_app_registration_secret: [
-              'Succeeded'
-            ]
-            Get_BambooHR_API_key_secret: [
+            Retrieve_company_directory_from_BambooHR: [
               'Succeeded'
             ]
           }
-          type: 'Http'
+          type: 'ParseJson'
+        }
+        Retrieve_company_directory_from_BambooHR: {
           inputs: {
             authentication: {
               password: '@body(\'Get_BambooHR_API_key_secret\')?[\'value\']'
@@ -825,6 +1042,15 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
             method: 'GET'
             uri: 'https://api.bamboohr.com/api/gateway.php/amach/v1/employees/directory'
           }
+          runAfter: {
+            Get_BambooHR_API_key_secret: [
+              'Succeeded'
+            ]
+            Get_Entra_ID_app_registration_secret: [
+              'Succeeded'
+            ]
+          }
+          type: 'Http'
         }
       }
       outputs: {}
@@ -869,9 +1095,7 @@ resource keyVaultConnection 'Microsoft.Web/connections@2016-06-01' = {
         }
       }
     }
-
   })
-
 }
 
 resource managedApi 'Microsoft.Web/locations/managedApis@2016-06-01' existing = {
@@ -884,7 +1108,7 @@ resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
   location: location
 }
 
-resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing =  {
+resource keyVaultSecretsUserRoleDefinition 'Microsoft.Authorization/roleDefinitions@2022-04-01' existing = {
   scope: subscription()
   name: '4633458b-17de-408a-b874-0445c86b69e6'
 }
@@ -895,7 +1119,7 @@ resource managedIdentityRoleAssignment 'Microsoft.Authorization/roleAssignments@
   properties: {
     principalId: managedIdentity.properties.principalId
     roleDefinitionId: keyVaultSecretsUserRoleDefinition.id
-    // principalType: 'ServicePrincipal'
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -918,7 +1142,7 @@ resource diagnosticSetting 'Microsoft.Insights/diagnosticSettings@2021-05-01-pre
         }
       }
     ]
-    metrics:[
+    metrics: [
       {
         category: 'AllMetrics'
         enabled: true
@@ -932,3 +1156,4 @@ resource diagnosticSetting 'Microsoft.Insights/diagnosticSettings@2021-05-01-pre
 }
 
 output keyVaultConnectionName string = keyVaultConnection.name
+output workflowId string = workflow.id
